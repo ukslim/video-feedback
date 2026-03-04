@@ -492,7 +492,7 @@ export default function FeedbackCanvas() {
         s.pitch += dy * 2;
       }
     } else {
-      s.distance *= 1 - dy * 2;
+      s.distance *= 1 - dy * 2 - dx * 2;
       s.distance = Math.max(0.3, Math.min(4, s.distance));
     }
   }, []);
@@ -548,7 +548,7 @@ export default function FeedbackCanvas() {
             </div>
             <div className="flex flex-1 flex-col items-center justify-center">
               <span className="text-lg font-semibold text-amber-200">Zoom</span>
-              <span className="mt-1 text-xs text-white/80">Bottom third — closer / further</span>
+              <span className="mt-1 text-xs text-white/80">Bottom third — drag any direction to zoom in/out</span>
             </div>
           </div>
         </div>
