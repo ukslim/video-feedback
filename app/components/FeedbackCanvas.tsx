@@ -98,6 +98,7 @@ export default function FeedbackCanvas() {
   const [gyroPermission, setGyroPermission] = useState<
     "prompt" | "granted" | "denied" | null
   >(null);
+  const [showDragOverlay, setShowDragOverlay] = useState(true);
 
   const stateRef = useRef<{
     gl: WebGL2RenderingContext | null;
@@ -482,6 +483,10 @@ export default function FeedbackCanvas() {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   }, []);
 
+  const dismissDragOverlay = useCallback(() => {
+    setShowDragOverlay(false);
+  }, []);
+
   return (
     <div className="relative h-full w-full">
       <canvas
@@ -494,6 +499,39 @@ export default function FeedbackCanvas() {
         onPointerCancel={onPointerUp}
         onContextMenu={(e) => e.preventDefault()}
       />
+      {showDragOverlay && (
+        <div
+          className="pointer-events-none absolute inset-0 z-10 flex flex-col"
+          aria-label="Drag instructions"
+        >
+          <div className="pointer-events-auto absolute right-3 top-3 z-20">
+            <button
+              type="button"
+              onClick={dismissDragOverlay}
+              className="rounded-full bg-white/20 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/30"
+            >
+              Dismiss
+            </button>
+          </div>
+          <p className="absolute left-1/2 top-6 z-20 -translate-x-1/2 text-center text-sm font-medium text-white/95">
+            Drag in each zone to control the camera
+          </p>
+          <div className="flex flex-1 flex-col">
+            <div className="flex flex-1 flex-col items-center justify-center border-b border-white/20">
+              <span className="text-lg font-semibold text-amber-200">Pan</span>
+              <span className="mt-1 text-xs text-white/80">Top third — move view up/down/left/right</span>
+            </div>
+            <div className="flex flex-1 flex-col items-center justify-center border-b border-white/20">
+              <span className="text-lg font-semibold text-amber-200">Rotate</span>
+              <span className="mt-1 text-xs text-white/80">Middle — pitch and yaw</span>
+            </div>
+            <div className="flex flex-1 flex-col items-center justify-center">
+              <span className="text-lg font-semibold text-amber-200">Zoom</span>
+              <span className="mt-1 text-xs text-white/80">Bottom third — closer / further</span>
+            </div>
+          </div>
+        </div>
+      )}
       {gyroPermission === "prompt" && (
         <button
           type="button"
