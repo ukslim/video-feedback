@@ -5,6 +5,7 @@ import { vertexSource, fragmentSource } from "@/app/simulation/shaders";
 
 const FEEDBACK_GAIN = 0.88;
 const FEEDBACK_BIAS = 0.02;
+const GYRO_SENSITIVITY = 0.5;
 
 function compileShader(
   gl: WebGL2RenderingContext,
@@ -121,6 +122,9 @@ export default function FeedbackCanvas() {
     lastY: number;
     gyroYaw: number;
     gyroPitch: number;
+    gyroHomeYaw: number;
+    gyroHomePitch: number;
+    gyroHomeSet: boolean;
     gyroOffsetYaw: number;
     gyroOffsetPitch: number;
     frameId: number;
@@ -148,6 +152,9 @@ export default function FeedbackCanvas() {
     lastY: 0,
     gyroYaw: 0,
     gyroPitch: 0,
+    gyroHomeYaw: 0,
+    gyroHomePitch: 0,
+    gyroHomeSet: false,
     gyroOffsetYaw: 0,
     gyroOffsetPitch: 0,
     frameId: 0,
@@ -264,8 +271,12 @@ export default function FeedbackCanvas() {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, readTex);
 
-      const yaw = s.gyroActive ? s.gyroYaw + s.gyroOffsetYaw : s.yaw;
-      const pitch = s.gyroActive ? s.gyroPitch + s.gyroOffsetPitch : s.pitch;
+      const yaw = s.gyroActive
+        ? (s.gyroYaw - s.gyroHomeYaw) * GYRO_SENSITIVITY + s.gyroOffsetYaw
+        : s.yaw;
+      const pitch = s.gyroActive
+        ? (s.gyroPitch - s.gyroHomePitch) * GYRO_SENSITIVITY + s.gyroOffsetPitch
+        : s.pitch;
 
       const uFeedback = gl.getUniformLocation(program, "u_feedback");
       const uResolution = gl.getUniformLocation(program, "u_resolution");
@@ -330,6 +341,11 @@ export default function FeedbackCanvas() {
       const s = stateRef.current;
       const alpha = e.alpha != null ? (e.alpha * Math.PI) / 180 : 0;
       const beta = e.beta != null ? (e.beta * Math.PI) / 180 : 0;
+      if (!s.gyroHomeSet) {
+        s.gyroHomeYaw = alpha;
+        s.gyroHomePitch = beta;
+        s.gyroHomeSet = true;
+      }
       s.gyroYaw = alpha;
       s.gyroPitch = beta;
     };
@@ -417,6 +433,11 @@ export default function FeedbackCanvas() {
       const s = stateRef.current;
       const alpha = e.alpha != null ? (e.alpha * Math.PI) / 180 : 0;
       const beta = e.beta != null ? (e.beta * Math.PI) / 180 : 0;
+      if (!s.gyroHomeSet) {
+        s.gyroHomeYaw = alpha;
+        s.gyroHomePitch = beta;
+        s.gyroHomeSet = true;
+      }
       s.gyroYaw = alpha;
       s.gyroPitch = beta;
     };

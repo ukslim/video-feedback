@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import PortraitLock from "@/app/components/PortraitLock";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -19,7 +20,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <PortraitLock>{children}</PortraitLock>
+      </body>
     </html>
   );
 }
