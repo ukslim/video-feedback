@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Video feedback
 
-## Getting Started
+A 90s-style video feedback simulation in the browser: point a “camera” at a “screen” showing its own view, with a pulsating blob (flame) between them, and watch the image feed back into swirling patterns.
 
-First, run the development server:
+**Live app:** [https://ukslim.github.io/video-feedback/](https://ukslim.github.io/video-feedback/)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Stack
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Commands
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Develop:** `pnpm dev` → [http://localhost:3000](http://localhost:3000)
+- **Build:** `pnpm build`
+- **Start (production):** `pnpm start`
+- **Lint:** `pnpm lint`
 
-## Learn More
+## Behaviour
 
-To learn more about Next.js, take a look at the following resources:
+- **Flame:** A blob at the centre that pulsates in size and hue (red, orange, yellow, white).
+- **Camera (drag):**
+  - **Top third:** move up/down/left/right
+  - **Middle third:** pitch/yaw
+  - **Bottom third:** closer/further from the “screen”
+- **Gyro:** On supported devices, the gyroscope drives the camera; drag still works for correction.
+- **Auto tuning:** Brightness and contrast are adjusted so the feedback doesn’t collapse to solid white or black.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deploy (GitHub Pages)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The app is built and deployed via GitHub Actions on push to `main`. In the repo **Settings → Pages**, set **Source** to **GitHub Actions**.
