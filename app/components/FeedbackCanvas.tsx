@@ -115,6 +115,11 @@ export default function FeedbackCanvas() {
     "prompt" | "granted" | "denied" | null
   >(null);
   const [showDragOverlay, setShowDragOverlay] = useState(true);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+
+  useEffect(() => {
+    setIsTouchDevice(isLikelyMobile());
+  }, []);
 
   const permissionPromptUsedRef = useRef(false);
 
@@ -137,6 +142,11 @@ export default function FeedbackCanvas() {
     flameOffsetY: number;
     pointerDown: boolean;
     sector: "pan" | "orient" | "zoom" | "flame" | null;
+    primaryPointerId: number | null;
+    secondFingerDown: boolean;
+    previousSector: "pan" | "orient" | "zoom" | "flame" | null;
+    longPressTimer: ReturnType<typeof setTimeout> | null;
+    longPressFlame: boolean;
     lastX: number;
     lastY: number;
     flameClickX: number;
@@ -173,6 +183,11 @@ export default function FeedbackCanvas() {
     flameOffsetY: 0,
     pointerDown: false,
     sector: null,
+    primaryPointerId: null,
+    secondFingerDown: false,
+    previousSector: null,
+    longPressTimer: null,
+    longPressFlame: false,
     lastX: 0,
     lastY: 0,
     flameClickX: 0,
@@ -561,16 +576,54 @@ export default function FeedbackCanvas() {
       e.preventDefault();
       const s = stateRef.current;
       const canvas = canvasRef.current;
-      s.pointerDown = true;
-      s.sector = e.shiftKey ? "flame" : getSector(e.clientY);
-      s.lastX = e.clientX;
-      s.lastY = e.clientY;
-      if (s.sector === "flame" && canvas) {
-        const rect = canvas.getBoundingClientRect();
-        s.flameClickX = (e.clientX - rect.left) / rect.width;
-        s.flameClickY = (e.clientY - rect.top) / rect.height;
-        s.flameDownX = e.clientX;
-        s.flameDownY = e.clientY;
+      const isTouch = e.pointerType === "touch";
+
+      if (!s.pointerDown) {
+        // First finger / pointer
+        s.pointerDown = true;
+        s.primaryPointerId = e.pointerId;
+        s.sector = e.shiftKey ? "flame" : getSector(e.clientY);
+        s.lastX = e.clientX;
+        s.lastY = e.clientY;
+        if (s.sector === "flame" && canvas) {
+          const rect = canvas.getBoundingClientRect();
+          s.flameClickX = (e.clientX - rect.left) / rect.width;
+          s.flameClickY = (e.clientY - rect.top) / rect.height;
+          s.flameDownX = e.clientX;
+          s.flameDownY = e.clientY;
+        }
+        // On touch: long-press (no movement) will switch to flame after 500ms
+        if (isTouch && s.sector !== "flame") {
+          s.longPressFlame = false;
+          s.longPressTimer = setTimeout(() => {
+            s.longPressTimer = null;
+            s.longPressFlame = true;
+            s.sector = "flame";
+            if (canvas) {
+              const rect = canvas.getBoundingClientRect();
+              s.flameClickX = (s.lastX - rect.left) / rect.width;
+              s.flameClickY = (s.lastY - rect.top) / rect.height;
+              s.flameDownX = s.lastX;
+              s.flameDownY = s.lastY;
+            }
+          }, 500);
+        }
+      } else if (e.pointerId !== s.primaryPointerId) {
+        // Second finger: switch current drag to flame (touch alternative to shift+drag)
+        if (s.longPressTimer) {
+          clearTimeout(s.longPressTimer);
+          s.longPressTimer = null;
+        }
+        s.secondFingerDown = true;
+        s.previousSector = s.sector;
+        s.sector = "flame";
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          s.flameClickX = (s.lastX - rect.left) / rect.width;
+          s.flameClickY = (s.lastY - rect.top) / rect.height;
+          s.flameDownX = s.lastX;
+          s.flameDownY = s.lastY;
+        }
       }
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
@@ -580,6 +633,16 @@ export default function FeedbackCanvas() {
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const s = stateRef.current;
     if (!s.pointerDown || s.sector === null) return;
+    // Only the primary pointer (first finger / mouse) drives the drag
+    if (e.pointerId !== s.primaryPointerId) return;
+
+    // Cancel long-press if user moved before timer fired; set sector by position
+    if (s.longPressTimer) {
+      clearTimeout(s.longPressTimer);
+      s.longPressTimer = null;
+      if (!s.longPressFlame) s.sector = getSector(e.clientY);
+    }
+
     const dx = (e.clientX - s.lastX) / (stateRef.current.width || 1);
     const dy = (e.clientY - s.lastY) / (stateRef.current.height || 1);
     const dxPx = e.clientX - s.lastX;
@@ -611,22 +674,37 @@ export default function FeedbackCanvas() {
       s.distance *= 1 - dy * 2 - dx * 2;
       s.distance = Math.max(0.3, Math.min(4, s.distance));
     }
-  }, []);
+  }, [getSector]);
 
   const onPointerUp = useCallback((e: React.PointerEvent) => {
     const s = stateRef.current;
-    if (s.sector === "flame" && s.pointerDown) {
-      const movedPx = Math.hypot(
-        e.clientX - s.flameDownX,
-        e.clientY - s.flameDownY,
-      );
-      if (movedPx < 6) {
-        s.flameOffsetX = Math.max(-0.5, Math.min(0.5, s.flameClickX - 0.5));
-        s.flameOffsetY = Math.max(-0.5, Math.min(0.5, 0.5 - s.flameClickY));
+    if (e.pointerId === s.primaryPointerId) {
+      if (s.longPressTimer) {
+        clearTimeout(s.longPressTimer);
+        s.longPressTimer = null;
       }
+      if (s.sector === "flame" && s.pointerDown) {
+        const movedPx = Math.hypot(
+          e.clientX - s.flameDownX,
+          e.clientY - s.flameDownY,
+        );
+        if (movedPx < 6) {
+          s.flameOffsetX = Math.max(-0.5, Math.min(0.5, s.flameClickX - 0.5));
+          s.flameOffsetY = Math.max(-0.5, Math.min(0.5, 0.5 - s.flameClickY));
+        }
+      }
+      s.pointerDown = false;
+      s.sector = null;
+      s.primaryPointerId = null;
+      s.secondFingerDown = false;
+      s.previousSector = null;
+      s.longPressFlame = false;
+    } else if (s.pointerDown && s.secondFingerDown) {
+      // Second finger lifted — back to pan/orient/zoom
+      s.secondFingerDown = false;
+      s.sector = s.previousSector;
+      s.previousSector = null;
     }
-    s.pointerDown = false;
-    s.sector = null;
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   }, []);
 
@@ -661,8 +739,15 @@ export default function FeedbackCanvas() {
             </button>
           </div>
           <p className="absolute left-1/2 top-6 z-20 -translate-x-1/2 text-center text-sm font-medium text-white/95">
-            Drag in each zone to control the camera. Shift+drag to move the
-            flame.
+            Drag in each zone to control the camera.{" "}
+            {isTouchDevice ? (
+              <>
+                Flame: long-press then drag, or two fingers (place second
+                finger then drag with first).
+              </>
+            ) : (
+              <>Shift+drag to move the flame.</>
+            )}
           </p>
           <div className="flex flex-1 flex-col">
             <div className="flex flex-1 flex-col items-center justify-center border-b border-white/20">
