@@ -29,6 +29,7 @@ uniform float u_flameOffsetY;
 
 uniform float u_gain;
 uniform float u_bias;
+uniform float u_hBlur;  // 1.0 = display pass: apply horizontal blur
 
 in vec2 v_uv;
 
@@ -56,9 +57,23 @@ void main() {
   uv += 0.5 + vec2(u_panX, u_panY);
 
   // Anything beyond the canvas edge is black (avoids white bleed from wrap/edge)
+  // Display pass only (u_hBlur > 0): horizontal blur, width 1/500 of pane
   vec4 feedback;
   if (uv.x < 0.0 || uv.x >= 1.0 || uv.y < 0.0 || uv.y >= 1.0) {
     feedback = vec4(0.0, 0.0, 0.0, 1.0);
+  } else if (u_hBlur > 0.5) {
+    const float BLUR_WIDTH = 1.0 / 500.0;  // total blur width = 1/500 of pane
+    float step = BLUR_WIDTH * 0.25;       // 5 taps over width → step 1/2000
+    float o0 = -2.0 * step;
+    float o1 = -1.0 * step;
+    float o3 =  1.0 * step;
+    float o4 =  2.0 * step;
+    vec4 t0 = (uv.x + o0 >= 0.0 && uv.x + o0 < 1.0) ? texture(u_feedback, uv + vec2(o0, 0.0)) : vec4(0.0, 0.0, 0.0, 1.0);
+    vec4 t1 = (uv.x + o1 >= 0.0 && uv.x + o1 < 1.0) ? texture(u_feedback, uv + vec2(o1, 0.0)) : vec4(0.0, 0.0, 0.0, 1.0);
+    vec4 t2 = texture(u_feedback, uv);
+    vec4 t3 = (uv.x + o3 >= 0.0 && uv.x + o3 < 1.0) ? texture(u_feedback, uv + vec2(o3, 0.0)) : vec4(0.0, 0.0, 0.0, 1.0);
+    vec4 t4 = (uv.x + o4 >= 0.0 && uv.x + o4 < 1.0) ? texture(u_feedback, uv + vec2(o4, 0.0)) : vec4(0.0, 0.0, 0.0, 1.0);
+    feedback = 0.06 * t0 + 0.24 * t1 + 0.4 * t2 + 0.24 * t3 + 0.06 * t4;
   } else {
     feedback = texture(u_feedback, uv);
   }

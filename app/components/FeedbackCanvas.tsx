@@ -16,6 +16,12 @@ const BREATH_PAN_AMPLITUDE = 0.005; // ±5%
 const BREATH_ROTATION_DEG = 0.01; // ±1 degree
 const DEG_TO_RAD = Math.PI / 180;
 
+/** Prefer gyro on touch devices (natural motion from holding phone); breathing on desktop. */
+function isLikelyMobile(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return navigator.maxTouchPoints > 0 || "ontouchstart" in window;
+}
+
 function compileShader(
   gl: WebGL2RenderingContext,
   type: number,
@@ -109,6 +115,8 @@ export default function FeedbackCanvas() {
     "prompt" | "granted" | "denied" | null
   >(null);
   const [showDragOverlay, setShowDragOverlay] = useState(true);
+
+  const permissionPromptUsedRef = useRef(false);
 
   const stateRef = useRef<{
     gl: WebGL2RenderingContext | null;
@@ -344,8 +352,10 @@ export default function FeedbackCanvas() {
       const uFlameOffsetY = gl.getUniformLocation(program, "u_flameOffsetY");
       const uGain = gl.getUniformLocation(program, "u_gain");
       const uBias = gl.getUniformLocation(program, "u_bias");
+      const uHBlur = gl.getUniformLocation(program, "u_hBlur");
 
       gl.uniform1i(uFeedback, 0);
+      gl.uniform1f(uHBlur, 0);
       gl.uniform2f(uResolution, s.width, s.height);
       gl.uniform1f(uTime, t);
       gl.uniform1f(uPanX, panX);
@@ -366,6 +376,7 @@ export default function FeedbackCanvas() {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.bindTexture(gl.TEXTURE_2D, readTarget === 0 ? s.texA : s.texB);
+      gl.uniform1f(uHBlur, 1);
       gl.uniform1f(uPanX, 0);
       gl.uniform1f(uPanY, 0);
       gl.uniform1f(uPitch, 0);
@@ -412,12 +423,14 @@ export default function FeedbackCanvas() {
           }
         ).requestPermission === "function"
       ) {
+        permissionPromptUsedRef.current = true;
         setGyroPermission("prompt");
       } else {
         window.addEventListener("deviceorientation", handleOrientation);
         setGyroAvailable(true);
-        // Do NOT set gyroActive here: on desktop we have no real gyro, so keep breathing
-        stateRef.current.gyroActive = false;
+        setGyroPermission("granted");
+        // Desktop: no real gyro → breathing. Mobile: use gyro (natural motion from holding device).
+        stateRef.current.gyroActive = isLikelyMobile();
       }
     }
 
@@ -511,6 +524,7 @@ export default function FeedbackCanvas() {
 
   useEffect(() => {
     if (gyroPermission !== "granted" || !gyroAvailable) return;
+    if (!permissionPromptUsedRef.current) return; // Listener already added in main effect (e.g. Android)
     stateRef.current.gyroActive = true;
     const handleOrientation = (e: DeviceOrientationEvent) => {
       const s = stateRef.current;
