@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { vertexSource, fragmentSource } from "@/app/simulation/shaders";
+import {
+  encodeFeedbackParams,
+  getFeedbackParamsFromUrl,
+  type FeedbackParams,
+} from "@/app/lib/feedbackUrlParams";
 
 const FEEDBACK_GAIN = 0.88;
 const FEEDBACK_BIAS = 0.02;
@@ -233,6 +238,17 @@ export default function FeedbackCanvas() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Apply URL params on load so shared links restore state
+    const urlParams = getFeedbackParamsFromUrl();
+    const s0 = stateRef.current;
+    s0.panX = urlParams.panX;
+    s0.panY = urlParams.panY;
+    s0.pitch = urlParams.pitch;
+    s0.yaw = urlParams.yaw;
+    s0.distance = urlParams.distance;
+    s0.flameOffsetX = urlParams.flameOffsetX;
+    s0.flameOffsetY = urlParams.flameOffsetY;
 
     const gl = canvas.getContext("webgl2", { alpha: false });
     if (!gl) {
@@ -535,6 +551,30 @@ export default function FeedbackCanvas() {
       gl.deleteVertexArray(vao);
       gl.deleteBuffer(vbo);
     };
+  }, []);
+
+  // Every 5s, sync address bar with current params when they change (shareable URL)
+  useEffect(() => {
+    const INTERVAL_MS = 5000;
+    const id = setInterval(() => {
+      const s = stateRef.current;
+      const params: FeedbackParams = {
+        panX: s.panX,
+        panY: s.panY,
+        pitch: s.pitch,
+        yaw: s.yaw,
+        distance: s.distance,
+        flameOffsetX: s.flameOffsetX,
+        flameOffsetY: s.flameOffsetY,
+      };
+      const nextQuery = encodeFeedbackParams(params);
+      const currentSearch = window.location.search || "";
+      if (nextQuery !== "?" && nextQuery !== currentSearch) {
+        const url = window.location.pathname + nextQuery;
+        window.history.replaceState(null, "", url);
+      }
+    }, INTERVAL_MS);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
