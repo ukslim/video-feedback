@@ -121,6 +121,8 @@ export default function FeedbackCanvas() {
   >(null);
   const [showDragOverlay, setShowDragOverlay] = useState(true);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [isDraggingFlame, setIsDraggingFlame] = useState(false);
+  const [, setFlameDragUpdate] = useState(0);
 
   useEffect(() => {
     setIsTouchDevice(isLikelyMobile());
@@ -631,6 +633,7 @@ export default function FeedbackCanvas() {
           s.flameClickY = (e.clientY - rect.top) / rect.height;
           s.flameDownX = e.clientX;
           s.flameDownY = e.clientY;
+          setIsDraggingFlame(true);
         }
         // On touch: long-press (no movement) will switch to flame after 500ms
         if (isTouch && s.sector !== "flame") {
@@ -646,6 +649,7 @@ export default function FeedbackCanvas() {
               s.flameDownX = s.lastX;
               s.flameDownY = s.lastY;
             }
+            setIsDraggingFlame(true);
           }, 500);
         }
       } else if (e.pointerId !== s.primaryPointerId) {
@@ -664,6 +668,7 @@ export default function FeedbackCanvas() {
           s.flameDownX = s.lastX;
           s.flameDownY = s.lastY;
         }
+        setIsDraggingFlame(true);
       }
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
@@ -699,6 +704,7 @@ export default function FeedbackCanvas() {
       s.flameOffsetY -= dyPx / h;
       s.flameOffsetX = Math.max(-0.5, Math.min(0.5, s.flameOffsetX));
       s.flameOffsetY = Math.max(-0.5, Math.min(0.5, s.flameOffsetY));
+      setFlameDragUpdate((n) => n + 1);
     } else if (s.sector === "pan") {
       s.panX += dx * 0.8;
       s.panY -= dy * 0.8;
@@ -711,7 +717,7 @@ export default function FeedbackCanvas() {
         s.pitch += dy * 2;
       }
     } else {
-      s.distance *= 1 - dy * 2 - dx * 2;
+      s.distance *= 1 + dy * 2 + dx * 2;
       s.distance = Math.max(0.3, Math.min(4, s.distance));
     }
   }, [getSector]);
@@ -733,6 +739,7 @@ export default function FeedbackCanvas() {
           s.flameOffsetY = Math.max(-0.5, Math.min(0.5, 0.5 - s.flameClickY));
         }
       }
+      setIsDraggingFlame(false);
       s.pointerDown = false;
       s.sector = null;
       s.primaryPointerId = null;
@@ -744,6 +751,7 @@ export default function FeedbackCanvas() {
       s.secondFingerDown = false;
       s.sector = s.previousSector;
       s.previousSector = null;
+      setIsDraggingFlame(false);
     }
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   }, []);
@@ -751,6 +759,23 @@ export default function FeedbackCanvas() {
   const dismissDragOverlay = useCallback(() => {
     setShowDragOverlay(false);
   }, []);
+
+  // Current flame position in normalized 0..1 (original + offset), for crosshair
+  const s = stateRef.current;
+  const yaw =
+    s.gyroActive
+      ? (s.gyroYaw - s.gyroHomeYaw) * GYRO_SENSITIVITY + s.gyroOffsetYaw
+      : s.yaw;
+  const cosY = Math.cos(yaw);
+  const sinY = Math.sin(yaw);
+  const origFlameX =
+    0.5 -
+    (1 / (s.distance || 1)) * (cosY * s.panX + sinY * s.panY);
+  const origFlameY =
+    0.5 -
+    (1 / (s.distance || 1)) * (-sinY * s.panX + cosY * s.panY);
+  const flameX = origFlameX + s.flameOffsetX;
+  const flameY = origFlameY + s.flameOffsetY;
 
   return (
     <div className="relative h-full w-full">
@@ -764,6 +789,23 @@ export default function FeedbackCanvas() {
         onPointerCancel={onPointerUp}
         onContextMenu={(e) => e.preventDefault()}
       />
+      {isDraggingFlame && (
+        <div
+          className="pointer-events-none absolute inset-0 z-10"
+          aria-hidden
+        >
+          <div
+            className="absolute w-20 h-20 -translate-x-1/2 -translate-y-1/2 mix-blend-difference"
+            style={{
+              left: `${flameX * 100}%`,
+              top: `${(1 - flameY) * 100}%`,
+            }}
+          >
+            <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-white" />
+            <div className="absolute top-1/2 left-0 right-0 h-1 -translate-y-1/2 bg-white" />
+          </div>
+        </div>
+      )}
       {showDragOverlay && (
         <div
           className="pointer-events-none absolute inset-0 z-10 flex flex-col"
