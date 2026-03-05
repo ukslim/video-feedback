@@ -125,10 +125,16 @@ export default function FeedbackCanvas() {
     pitch: number;
     yaw: number;
     distance: number;
+    flameOffsetX: number;
+    flameOffsetY: number;
     pointerDown: boolean;
-    sector: "pan" | "orient" | "zoom" | null;
+    sector: "pan" | "orient" | "zoom" | "flame" | null;
     lastX: number;
     lastY: number;
+    flameClickX: number;
+    flameClickY: number;
+    flameDownX: number;
+    flameDownY: number;
     gyroYaw: number;
     gyroPitch: number;
     gyroHomeYaw: number;
@@ -155,10 +161,16 @@ export default function FeedbackCanvas() {
     pitch: 0,
     yaw: 0,
     distance: 1.08,
+    flameOffsetX: 0,
+    flameOffsetY: 0,
     pointerDown: false,
     sector: null,
     lastX: 0,
     lastY: 0,
+    flameClickX: 0,
+    flameClickY: 0,
+    flameDownX: 0,
+    flameDownY: 0,
     gyroYaw: 0,
     gyroPitch: 0,
     gyroHomeYaw: 0,
@@ -328,6 +340,8 @@ export default function FeedbackCanvas() {
         program,
         "u_flameLightness",
       );
+      const uFlameOffsetX = gl.getUniformLocation(program, "u_flameOffsetX");
+      const uFlameOffsetY = gl.getUniformLocation(program, "u_flameOffsetY");
       const uGain = gl.getUniformLocation(program, "u_gain");
       const uBias = gl.getUniformLocation(program, "u_bias");
 
@@ -342,6 +356,8 @@ export default function FeedbackCanvas() {
       gl.uniform1f(uFlameRadius, flameRadius);
       gl.uniform1f(uFlameHue, hue);
       gl.uniform1f(uFlameLightness, lightness);
+      gl.uniform1f(uFlameOffsetX, s.flameOffsetX);
+      gl.uniform1f(uFlameOffsetY, s.flameOffsetY);
       gl.uniform1f(uGain, FEEDBACK_GAIN);
       gl.uniform1f(uBias, FEEDBACK_BIAS);
 
@@ -356,6 +372,8 @@ export default function FeedbackCanvas() {
       gl.uniform1f(uYaw, 0);
       gl.uniform1f(uDistance, 1);
       gl.uniform1f(uFlameRadius, 0);
+      gl.uniform1f(uFlameOffsetX, s.flameOffsetX);
+      gl.uniform1f(uFlameOffsetY, s.flameOffsetY);
       gl.uniform1f(uGain, 1);
       gl.uniform1f(uBias, 0);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -528,10 +546,18 @@ export default function FeedbackCanvas() {
     (e: React.PointerEvent) => {
       e.preventDefault();
       const s = stateRef.current;
+      const canvas = canvasRef.current;
       s.pointerDown = true;
-      s.sector = getSector(e.clientY);
+      s.sector = e.shiftKey ? "flame" : getSector(e.clientY);
       s.lastX = e.clientX;
       s.lastY = e.clientY;
+      if (s.sector === "flame" && canvas) {
+        const rect = canvas.getBoundingClientRect();
+        s.flameClickX = (e.clientX - rect.left) / rect.width;
+        s.flameClickY = (e.clientY - rect.top) / rect.height;
+        s.flameDownX = e.clientX;
+        s.flameDownY = e.clientY;
+      }
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
     [getSector],
@@ -542,10 +568,21 @@ export default function FeedbackCanvas() {
     if (!s.pointerDown || s.sector === null) return;
     const dx = (e.clientX - s.lastX) / (stateRef.current.width || 1);
     const dy = (e.clientY - s.lastY) / (stateRef.current.height || 1);
+    const dxPx = e.clientX - s.lastX;
+    const dyPx = e.clientY - s.lastY;
     s.lastX = e.clientX;
     s.lastY = e.clientY;
 
-    if (s.sector === "pan") {
+    if (s.sector === "flame") {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const w = canvas.clientWidth || 1;
+      const h = canvas.clientHeight || 1;
+      s.flameOffsetX += dxPx / w;
+      s.flameOffsetY -= dyPx / h;
+      s.flameOffsetX = Math.max(-0.5, Math.min(0.5, s.flameOffsetX));
+      s.flameOffsetY = Math.max(-0.5, Math.min(0.5, s.flameOffsetY));
+    } else if (s.sector === "pan") {
       s.panX += dx * 0.8;
       s.panY -= dy * 0.8;
     } else if (s.sector === "orient") {
@@ -564,6 +601,16 @@ export default function FeedbackCanvas() {
 
   const onPointerUp = useCallback((e: React.PointerEvent) => {
     const s = stateRef.current;
+    if (s.sector === "flame" && s.pointerDown) {
+      const movedPx = Math.hypot(
+        e.clientX - s.flameDownX,
+        e.clientY - s.flameDownY,
+      );
+      if (movedPx < 6) {
+        s.flameOffsetX = Math.max(-0.5, Math.min(0.5, s.flameClickX - 0.5));
+        s.flameOffsetY = Math.max(-0.5, Math.min(0.5, 0.5 - s.flameClickY));
+      }
+    }
     s.pointerDown = false;
     s.sector = null;
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
@@ -600,7 +647,8 @@ export default function FeedbackCanvas() {
             </button>
           </div>
           <p className="absolute left-1/2 top-6 z-20 -translate-x-1/2 text-center text-sm font-medium text-white/95">
-            Drag in each zone to control the camera
+            Drag in each zone to control the camera. Shift+drag to move the
+            flame.
           </p>
           <div className="flex flex-1 flex-col">
             <div className="flex flex-1 flex-col items-center justify-center border-b border-white/20">

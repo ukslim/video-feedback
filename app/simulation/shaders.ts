@@ -24,6 +24,8 @@ uniform float u_distance;
 uniform float u_flameRadius;
 uniform float u_flameHue;
 uniform float u_flameLightness;
+uniform float u_flameOffsetX;
+uniform float u_flameOffsetY;
 
 uniform float u_gain;
 uniform float u_bias;
@@ -65,6 +67,7 @@ void main() {
     cos(u_yaw) * u_panX + sin(u_yaw) * u_panY,
     -sin(u_yaw) * u_panX + cos(u_yaw) * u_panY
   );
+  flameCentre += vec2(u_flameOffsetX, u_flameOffsetY);
   float d = length(v_uv - flameCentre);
   float flame = 1.0 - smoothstep(u_flameRadius * 0.5, u_flameRadius, d);
   vec3 flameColor = hslToRgb(u_flameHue, 0.9, u_flameLightness);
