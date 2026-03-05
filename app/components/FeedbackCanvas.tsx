@@ -319,7 +319,7 @@ export default function FeedbackCanvas() {
 
       const t = time * 0.001;
       const flameRadius = 0.02 * (1 + 0.35 * noise1D(t));
-      const hue = (0 + 60 * (0.5 + 0.5 * noise1D(t * 0.7))) / 360;
+      const hue = (0.5 + 0.5 * noise1D(t * 0.7)); // full 0–1 hue cycle (all colours)
       const lightness = 0.5 + 0.4 * (0.5 + 0.5 * noise1D(t * 0.5));
 
       gl.useProgram(program);
