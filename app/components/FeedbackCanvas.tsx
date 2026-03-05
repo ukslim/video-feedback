@@ -7,6 +7,15 @@ const FEEDBACK_GAIN = 0.88;
 const FEEDBACK_BIAS = 0.02;
 const GYRO_SENSITIVITY = 0.5;
 
+// Breathing (no gyro): cycles per minute, separate freq per axis so they drift in/out of phase
+const BREATH_CPM_PAN_X = 10.2;
+const BREATH_CPM_PAN_Y = 11.1;
+const BREATH_CPM_PITCH = 10.7;
+const BREATH_CPM_YAW = 11.5;
+const BREATH_PAN_AMPLITUDE = 0.005; // ±5%
+const BREATH_ROTATION_DEG = 0.01; // ±1 degree
+const DEG_TO_RAD = Math.PI / 180;
+
 function compileShader(
   gl: WebGL2RenderingContext,
   type: number,
@@ -278,6 +287,33 @@ export default function FeedbackCanvas() {
         ? (s.gyroPitch - s.gyroHomePitch) * GYRO_SENSITIVITY + s.gyroOffsetPitch
         : s.pitch;
 
+      // When no gyro: gentle breathing on pan and rotation (10–12 cpm, separate phases)
+      const sec = t;
+      const cpmToRadPerSec = (2 * Math.PI) / 60;
+      const breathPanX = s.gyroActive
+        ? 0
+        : BREATH_PAN_AMPLITUDE *
+          Math.sin(sec * BREATH_CPM_PAN_X * cpmToRadPerSec);
+      const breathPanY = s.gyroActive
+        ? 0
+        : BREATH_PAN_AMPLITUDE *
+          Math.sin(sec * BREATH_CPM_PAN_Y * cpmToRadPerSec);
+      const breathPitch = s.gyroActive
+        ? 0
+        : BREATH_ROTATION_DEG *
+          DEG_TO_RAD *
+          Math.sin(sec * BREATH_CPM_PITCH * cpmToRadPerSec);
+      const breathYaw = s.gyroActive
+        ? 0
+        : BREATH_ROTATION_DEG *
+          DEG_TO_RAD *
+          Math.sin(sec * BREATH_CPM_YAW * cpmToRadPerSec);
+
+      const panX = s.panX + breathPanX;
+      const panY = s.panY + breathPanY;
+      const rotPitch = pitch + breathPitch;
+      const rotYaw = yaw + breathYaw;
+
       const uFeedback = gl.getUniformLocation(program, "u_feedback");
       const uResolution = gl.getUniformLocation(program, "u_resolution");
       const uTime = gl.getUniformLocation(program, "u_time");
@@ -298,10 +334,10 @@ export default function FeedbackCanvas() {
       gl.uniform1i(uFeedback, 0);
       gl.uniform2f(uResolution, s.width, s.height);
       gl.uniform1f(uTime, t);
-      gl.uniform1f(uPanX, s.panX);
-      gl.uniform1f(uPanY, s.panY);
-      gl.uniform1f(uPitch, pitch);
-      gl.uniform1f(uYaw, yaw);
+      gl.uniform1f(uPanX, panX);
+      gl.uniform1f(uPanY, panY);
+      gl.uniform1f(uPitch, rotPitch);
+      gl.uniform1f(uYaw, rotYaw);
       gl.uniform1f(uDistance, s.distance);
       gl.uniform1f(uFlameRadius, flameRadius);
       gl.uniform1f(uFlameHue, hue);
@@ -362,14 +398,27 @@ export default function FeedbackCanvas() {
       } else {
         window.addEventListener("deviceorientation", handleOrientation);
         setGyroAvailable(true);
-        stateRef.current.gyroActive = true;
+        // Do NOT set gyroActive here: on desktop we have no real gyro, so keep breathing
+        stateRef.current.gyroActive = false;
       }
     }
 
     const win = window as unknown as {
       stepFrames?: (n?: number) => void;
-      setCamera?: (opts: { panX?: number; panY?: number; pitch?: number; yaw?: number; distance?: number }) => void;
-      getCamera?: () => { panX: number; panY: number; pitch: number; yaw: number; distance: number };
+      setCamera?: (opts: {
+        panX?: number;
+        panY?: number;
+        pitch?: number;
+        yaw?: number;
+        distance?: number;
+      }) => void;
+      getCamera?: () => {
+        panX: number;
+        panY: number;
+        pitch: number;
+        yaw: number;
+        distance: number;
+      };
       getState?: () => { gain: number; bias: number };
       debugPause?: () => void;
       debugRun?: () => void;
@@ -384,13 +433,24 @@ export default function FeedbackCanvas() {
       if (opts.panY !== undefined) s.panY = opts.panY;
       if (opts.pitch !== undefined) s.pitch = opts.pitch;
       if (opts.yaw !== undefined) s.yaw = opts.yaw;
-      if (opts.distance !== undefined) s.distance = Math.max(0.3, Math.min(4, opts.distance));
+      if (opts.distance !== undefined)
+        s.distance = Math.max(0.3, Math.min(4, opts.distance));
     };
     win.getCamera = () => {
       const s = stateRef.current;
-      return { panX: s.panX, panY: s.panY, pitch: s.pitch, yaw: s.yaw, distance: s.distance };
+      return {
+        panX: s.panX,
+        panY: s.panY,
+        pitch: s.pitch,
+        yaw: s.yaw,
+        distance: s.distance,
+      };
     };
-    win.getState = () => ({ gain: FEEDBACK_GAIN, bias: FEEDBACK_BIAS });
+    win.getState = () => ({
+      gain: FEEDBACK_GAIN,
+      bias: FEEDBACK_BIAS,
+      gyroActive: stateRef.current.gyroActive,
+    });
     win.debugPause = () => {
       stateRef.current.debugPaused = true;
     };
@@ -400,8 +460,13 @@ export default function FeedbackCanvas() {
     };
     if (typeof console !== "undefined" && console.info) {
       console.info(
-        "Video feedback debug: stepFrames(n), setCamera({panX,panY,pitch,yaw,distance}), getCamera(), debugPause(), debugRun()",
+        "Video feedback debug: stepFrames(n), setCamera({panX,panY,pitch,yaw,distance}), getCamera(), getState(), debugPause(), debugRun()",
       );
+      if (!stateRef.current.gyroActive) {
+        console.info(
+          "Breathing active (no gyro): pan ±5%, rotation ±1°, ~10–12/min",
+        );
+      }
     }
 
     return () => {
@@ -540,15 +605,23 @@ export default function FeedbackCanvas() {
           <div className="flex flex-1 flex-col">
             <div className="flex flex-1 flex-col items-center justify-center border-b border-white/20">
               <span className="text-lg font-semibold text-amber-200">Pan</span>
-              <span className="mt-1 text-xs text-white/80">Top third — move view up/down/left/right</span>
+              <span className="mt-1 text-xs text-white/80">
+                Top third — move view up/down/left/right
+              </span>
             </div>
             <div className="flex flex-1 flex-col items-center justify-center border-b border-white/20">
-              <span className="text-lg font-semibold text-amber-200">Rotate</span>
-              <span className="mt-1 text-xs text-white/80">Middle — pitch and yaw</span>
+              <span className="text-lg font-semibold text-amber-200">
+                Rotate
+              </span>
+              <span className="mt-1 text-xs text-white/80">
+                Middle — pitch and yaw
+              </span>
             </div>
             <div className="flex flex-1 flex-col items-center justify-center">
               <span className="text-lg font-semibold text-amber-200">Zoom</span>
-              <span className="mt-1 text-xs text-white/80">Bottom third — drag any direction to zoom in/out</span>
+              <span className="mt-1 text-xs text-white/80">
+                Bottom third — drag any direction to zoom in/out
+              </span>
             </div>
           </div>
         </div>
