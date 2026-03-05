@@ -70,7 +70,24 @@ void main() {
   vec3 flameColor = hslToRgb(u_flameHue, 0.9, u_flameLightness);
   vec3 color = feedback.rgb + flame * flameColor;
 
-  color = u_gain * color + u_bias;
+  // Feedback pass: CRT 625 scan lines (soft/blurred) + bottom-10% black curve + brightness lift
+  if (u_gain < 1.0) {
+    // 625 scan lines: soft, blurred gap (old CRT + video camera)
+    const float SCAN_LINES = 625.0;
+    float t = fract(v_uv.y * SCAN_LINES);
+    float gap = exp(-t * t * 45.0) + exp(-(1.0 - t) * (1.0 - t) * 45.0);
+    float scanFactor = 1.0 - 0.45 * gap;
+    color *= scanFactor;
+
+    // Brightness curve: crush bottom 10% to black, remap 0.1..1 -> 0..1
+    const float BLACK_POINT = 0.1;
+    color = clamp((color - BLACK_POINT) / (1.0 - BLACK_POINT), 0.0, 1.0);
+
+    // Lift brightness (keep black at bottom)
+    color = clamp(color * 1.4, 0.0, 1.0);
+  } else {
+    color = u_gain * color + u_bias;
+  }
   // Clamp to avoid feedback blow-out to white
   color = clamp(color, 0.0, 1.0);
 
